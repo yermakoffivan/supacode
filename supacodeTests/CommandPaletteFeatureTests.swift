@@ -89,6 +89,35 @@ struct CommandPaletteFeatureTests {
     #expect(ghosttyItem?.subtitle == "Focus the split to the right.")
   }
 
+  @Test func commandPaletteItems_omitsRenameSpacesGhosttyCommand() {
+    let rootPath = "/tmp/repo"
+    let worktree = makeWorktree(id: rootPath, name: "repo", repoRoot: rootPath)
+    let repository = makeRepository(rootPath: rootPath, name: "Repo", worktrees: [worktree])
+    var state = RepositoriesFeature.State(repositories: [repository])
+    state.selection = .worktree(worktree.id)
+
+    let items = CommandPaletteFeature.commandPaletteItems(
+      from: state,
+      ghosttyCommands: [
+        GhosttyCommand(
+          title: "Rename spaces",
+          description: "",
+          action: "rename_spaces",
+          actionKey: "rename_spaces"
+        ),
+        GhosttyCommand(
+          title: "Focus Split Right",
+          description: "Focus the split to the right.",
+          action: "goto_split:right",
+          actionKey: "goto_split"
+        ),
+      ]
+    )
+
+    #expect(items.contains { $0.title == "Rename spaces" } == false)
+    #expect(items.contains { $0.title == "Focus Split Right" })
+  }
+
   @Test func commandPaletteItems_omitGhosttyCommandsWithoutSelectedWorktree() {
     let items = CommandPaletteFeature.commandPaletteItems(
       from: RepositoriesFeature.State(),

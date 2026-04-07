@@ -602,17 +602,23 @@ private func pullRequestDelegateAction(
 }
 
 private func ghosttyCommandItems(_ commands: [GhosttyCommand]) -> [CommandPaletteItem] {
-  commands.map { command in
+  commands.compactMap { command in
+    let title = command.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !excludedGhosttyCommandTitles.contains(title.lowercased()) else { return nil }
     let subtitle = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
     return CommandPaletteItem(
       id: CommandPaletteItemID.ghosttyCommand(command),
-      title: command.title,
+      title: title,
       subtitle: subtitle.isEmpty ? nil : subtitle,
       kind: .ghosttyCommand(command.action),
       priorityTier: CommandPaletteItem.defaultPriorityTier + 100
     )
   }
 }
+
+private let excludedGhosttyCommandTitles = Set([
+  "rename spaces"
+])
 
 private func loadRecency(into state: inout CommandPaletteFeature.State) {
   @Shared(.appStorage("commandPaletteItemRecency")) var recency: [String: Double] = [:]
