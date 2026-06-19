@@ -78,8 +78,8 @@ extension ShellClient: DependencyKey {
       )
     },
     runLoginImpl: { executableURL, arguments, currentDirectoryURL, log in
-      let shellURL = URL(fileURLWithPath: defaultShellPath())
-      let execCommand = shellExecCommand(for: shellURL)
+      let (shellURL, execCommand) = ShellClient.loginShellInvocation(
+        userShell: URL(fileURLWithPath: defaultShellPath()))
       let shellArguments =
         ["-l", "-c", execCommand, "--", executableURL.path(percentEncoded: false)] + arguments
       if log {
@@ -102,8 +102,8 @@ extension ShellClient: DependencyKey {
       )
     },
     runLoginStreamImpl: { executableURL, arguments, currentDirectoryURL, log in
-      let shellURL = URL(fileURLWithPath: defaultShellPath())
-      let execCommand = shellExecCommand(for: shellURL)
+      let (shellURL, execCommand) = ShellClient.loginShellInvocation(
+        userShell: URL(fileURLWithPath: defaultShellPath()))
       let shellArguments =
         ["-l", "-c", execCommand, "--", executableURL.path(percentEncoded: false)] + arguments
       if log {
@@ -265,14 +265,27 @@ nonisolated private func collectOutput(
   return finalOutput
 }
 
-nonisolated private func shellExecCommand(for shellURL: URL) -> String {
-  switch shellURL.lastPathComponent {
-  case "fish":
-    return "test -f ~/.config/fish/config.fish; and source ~/.config/fish/config.fish >/dev/null 2>&1; exec $argv"
-  case "bash":
-    return "[ -f ~/.bashrc ] && . ~/.bashrc >/dev/null 2>&1; exec \"$@\""
-  default:
-    return "[ -f ~/.zshrc ] && . ~/.zshrc >/dev/null 2>&1; exec \"$@\""
+extension ShellClient {
+  /// Builds the `(shell, -c command)` pair for a one-shot login-shell command.
+  /// We only drive shells we have a correct rc snippet for — zsh, bash, fish.
+  /// Anything else (nushell, sh/dash/ksh, pwsh, …) falls back to /bin/zsh, which
+  /// can actually parse the snippet, so the command runs instead of failing
+  /// (issue #100). The interactive terminal still uses the user's real shell.
+  nonisolated static func loginShellInvocation(userShell: URL) -> (shell: URL, command: String) {
+    let drivable: Set<String> = ["zsh", "bash", "fish"]
+    let shell =
+      drivable.contains(userShell.lastPathComponent)
+      ? userShell : URL(fileURLWithPath: "/bin/zsh")
+    let command: String
+    switch shell.lastPathComponent {
+    case "fish":
+      command = "test -f ~/.config/fish/config.fish; and source ~/.config/fish/config.fish >/dev/null 2>&1; exec $argv"
+    case "bash":
+      command = "[ -f ~/.bashrc ] && . ~/.bashrc >/dev/null 2>&1; exec \"$@\""
+    default:
+      command = "[ -f ~/.zshrc ] && . ~/.zshrc >/dev/null 2>&1; exec \"$@\""
+    }
+    return (shell, command)
   }
 }
 
