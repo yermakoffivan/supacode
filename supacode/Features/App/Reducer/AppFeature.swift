@@ -1487,12 +1487,31 @@ struct AppFeature {
       appLogger.info("Ignoring open of missing worktree \(worktree.id) from \(source.rawValue)")
       return .none
     }
-    // Open / Reveal target local Finder / editors; a remote SSH path can't be
-    // reached, so reject it here regardless of the entry point (UI gates this
-    // too, but a hotkey can still reach the reducer).
-    if worktree.host != nil {
-      appLogger.info("Ignoring open of remote worktree \(worktree.id) from \(source.rawValue)")
-      return .none
+    // A remote SSH worktree opens only via an editor whose Remote-SSH CLI can
+    // express the host (`remoteOpenInvocation`, shared with the UI gates). The
+    // local `$EDITOR` terminal path and Finder don't apply remotely. Gated here
+    // too since a hotkey can reach the reducer without the UI.
+    if let host = worktree.host {
+      let remotePath = worktree.location.workingDirectoryPath
+      guard action != .editor,
+        action.remoteOpenInvocation(host: host, remotePath: remotePath) != nil
+      else {
+        appLogger.info(
+          "Rejecting open of remote worktree \(worktree.id) in \(action.settingsID) from \(source.rawValue)"
+        )
+        // A hotkey / deeplink can reach a non-capable action the UI gates out, so
+        // surface why nothing opened instead of failing silently.
+        return .send(.openWorktreeFailed(.remoteOpenUnsupported(action, host: host, remotePath: remotePath)))
+      }
+      analyticsClient.capture(
+        "worktree_opened",
+        ["action": action.settingsID, "source": source.rawValue, "remote": "true"]
+      )
+      return .run { send in
+        await workspaceClient.open(action, worktree) { error in
+          send(.openWorktreeFailed(error))
+        }
+      }
     }
     analyticsClient.capture("worktree_opened", ["action": action.settingsID, "source": source.rawValue])
     guard action == .editor else {
