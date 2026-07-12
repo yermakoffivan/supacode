@@ -1140,7 +1140,21 @@ struct AppFeature {
         return .none
 
       case .commandPalette(.delegate(.selectWorktree(let worktreeID))):
-        return .send(.repositories(.selectWorktree(worktreeID)))
+        // Always-focused-terminal: palette completion lands focus in the
+        // chosen worktree's terminal, matching the menu/deeplink paths
+        // that already passed focusTerminal: true.
+        return .send(.repositories(.selectWorktree(worktreeID, focusTerminal: true)))
+
+      case .commandPalette(.delegate(.dismissedWithoutSelection)):
+        // Always-focused-terminal invariant. Cancellation paths (Esc, outside
+        // tap, programmatic close) don't carry a destination; refocus the
+        // current worktree's terminal so the cursor never lingers nowhere.
+        guard let worktreeID = state.repositories.selectedWorktreeID,
+          state.repositories.sidebarItems[id: worktreeID] != nil
+        else { return .none }
+        return .send(
+          .repositories(.sidebarItems(.element(id: worktreeID, action: .focusTerminalRequested)))
+        )
 
       case .commandPalette(.delegate(.checkForUpdates)):
         return .send(.updates(.checkForUpdates))
@@ -1282,9 +1296,11 @@ struct AppFeature {
         if state.commandPalette.isPresented {
           return .send(.commandPalette(.setPresented(false)))
         }
+        // Ghostty's toggle action opens the command palette specifically, so
+        // force `.commands`; otherwise it would inherit the last-used mode.
         return .merge(
           .send(.repositories(.selectWorktree(worktreeID))),
-          .send(.commandPalette(.setPresented(true)))
+          .send(.commandPalette(.presentInMode(.commands)))
         )
       case .terminalEvent(.setupScriptConsumed(let worktreeID)):
         return .send(.repositories(.consumeSetupScript(worktreeID)))
